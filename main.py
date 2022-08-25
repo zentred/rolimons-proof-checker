@@ -12,8 +12,8 @@ nameToAcro = {}
 noAcronym = {}
 symbols = '`~!@#$%^&*()_-=+[]}{\/|;:,.<>?'
 
-auth = 'your DISCORD token, it must be in rolimons server'
-token = 'your BOT token'
+auth = 'your discord ACCOUNT token, it must be in rolimons server'
+token = 'your discord BOT token'
 
 headers = {
     'authorization': auth
