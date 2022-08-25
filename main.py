@@ -55,6 +55,7 @@ def rolimons(): # yes i didn't use the api, i can't be bothered to change
                         noAcronym[name] = None
             time.sleep(600)
         except:
+            time.sleep(60)
             continue
 
 threading.Thread(target=rolimons).start()
