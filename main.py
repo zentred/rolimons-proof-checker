@@ -34,7 +34,7 @@ months = {
     '12': 'December',
     }
 
-def rolimons():
+def rolimons(): # yes i didn't use the api, i can't be bothered to change
     global itemDetails, itemNames, nameToAcro, acroToName, noAcronym
     while True:
         try:
