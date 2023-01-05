@@ -1,65 +1,35 @@
-import requests, colorama, ctypes, threading, re, json, time, os, json, datetime, discord, copy
+import requests, threading, json, time, json, discord
 from discord.ext import commands
-from collections import Counter
+from misc import Tools
+session = requests.Session()
 
-discord_bot_token = 'put token in here!'
-discord_account_token = 'put token in here!' # your account has to be in the rolimons discord server or it will not work
+with open('config.json') as config:
+    config = json.load(config)
 
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='.', intents=intents)
-session = requests.Session()
-session.headers['authorization'] = discord_account_token
+session.headers['authorization'] = config['discordAccountToken']
 
 itemDetails = None
-acroToName, nameToAcro, noAcronym = {}, {}, {}
-symbols = '`~!@#$%^&*()_-=+[]}{\/|;:,.<>?'
-
-months = {
-    '1': 'January',
-    '2': 'February',
-    '3': 'March',
-    '4': 'April',
-    '5': 'May',
-    '6': 'June',
-    '7': 'July',
-    '8': 'August',
-    '9': 'September',
-    '10': 'October',
-    '11': 'November',
-    '12': 'December',
-    }
+acroToName = {}
+nameToAcro = {}
+noAcronym = {}
+assetIds = {}
 
 def firstLineGrab(splitMessage):
     firstLine = splitMessage[0].replace('  ', ' ')
-    for i in symbols:
+    for i in '`~!@#$%^&*()_-=+[]}{\/|;:,.<>?':
         firstLine = firstLine.replace(i, '')
+    firstLine = firstLine.replace('  ', ' ')
     return firstLine
 
 def rolimons():
-    global itemDetails, itemNames, nameToAcro, acroToName, noAcronym
+    global itemDetails, itemNames, nameToAcro, acroToName, noAcronym, assetIds
     while True:
-        try:
-            itemDetails = requests.get(
-                'https://www.rolimons.com/itemapi/itemdetails'
-            ).json()['items']
-            for item in itemDetails:
-                acronym = itemDetails[item][1]
-                name = itemDetails[item][0]
-                if acronym != '':
-                    nameToAcro[name] = [acronym]
-                    acroToName[acronym] = [name]
-                else:
-                    if len(name.split()) == 1:
-                        acroToName[name] = [name]
-                        nameToAcro[name] = [name]
-                    else:
-                        noAcronym[name] = None
-            time.sleep(600)
-        except:
-            time.sleep(60)
-            continue
-
+        assetIds, nameToAcro, acroToName, noAcronym = Tools.roli()
+        if nameToAcro != None: time.sleep(600)
+        else: time.sleep(60)
 threading.Thread(target=rolimons).start()
 
 @bot.event
@@ -69,41 +39,10 @@ async def on_command_error(ctx, error):
     await ctx.channel.send(embed=embed)
 
 @bot.command()
-@commands.cooldown(1, 10, commands.BucketType.user)
+@commands.cooldown(1, 5, commands.BucketType.user)
 async def proof(ctx, *, args):
-    itemName, itemAcronym, amount, offset = None, None, 0, 0
-
-    for i in acroToName:
-        if args.lower() == i.lower():
-            amount += 1
-            itemAcronym = i.lower()
-            itemName = acroToName[i][0].lower()
-
-    if amount == 0:
-        for i in nameToAcro:
-            if args.lower() == i.lower():
-                amount += 1
-                itemName = i.lower()
-                itemAcronym = nameToAcro[i][0].lower()
-
-    if amount == 0:
-        for i in nameToAcro:
-            if args.lower() in i.lower():
-                amount += 1
-                itemName = i.lower()
-                itemAcronym = nameToAcro[i][0].lower()
-
-    if amount == 0:
-        for i in noAcronym:
-            if args.lower() == i.lower():
-                amount += 1
-                itemName = i.lower()
-
-    if amount == 0:
-        for i in noAcronym:
-            if args.lower() in i.lower():
-                amount += 1
-                itemName = i.lower()
+    itemName, itemAcronym, amount = Tools.findItem(args, acroToName, nameToAcro, noAcronym)
+    offset = 0
 
     if amount != 1:
         if amount > 1: embed = discord.Embed(title = 'Not specific enough', description = f'`{args}` matched with multiple other limiteds, retry using the limited acronym or **full** name', color = 0xff0000)
@@ -115,14 +54,9 @@ async def proof(ctx, *, args):
     foundProofsTotal = 0
     proofsToFind = 5
 
-    [itemName := itemName.replace(i, '') for i in symbols]
-    itemName = itemName.replace('  ', ' ')
     while True:
-        if itemAcronym == 'op' or itemAcronym == 'vs':
-            r = session.get(f'https://discord.com/api/v9/guilds/415246288779608064/messages/search?channel_id=535250426061258753&content={itemName}&offset={offset}').json()
-        else:
-            if itemAcronym != None: r = session.get(f'https://discord.com/api/v9/guilds/415246288779608064/messages/search?channel_id=535250426061258753&content={itemAcronym}&offset={offset}').json()
-            elif itemAcronym == None: r = session.get(f'https://discord.com/api/v9/guilds/415246288779608064/messages/search?channel_id=535250426061258753&content={itemName}&offset={offset}').json()
+        content = Tools.toUse(itemAcronym, itemName)
+        r = session.get(f'https://discord.com/api/v9/guilds/415246288779608064/messages/search?channel_id=535250426061258753&content={content}&offset={offset}').json()
 
         if r['total_results'] == 0 or r['messages'] == []:
             embed = discord.Embed(title = 'No proofs', description = f'Unable to find *more* proofs for `{args}`', color = 0xFF0000)
@@ -132,7 +66,6 @@ async def proof(ctx, *, args):
         for proof in r['messages']:
             try:
                 imageUrl = proof[0]['attachments'][0]['url']
-                Year, Month, Date = str(proof[0]['timestamp']).split('T')[0].split('-', 3)
                 Message = proof[0]['content']
                 splitMessage = Message.lower().splitlines()
                 firstLine = firstLineGrab(splitMessage)
@@ -153,16 +86,15 @@ async def proof(ctx, *, args):
                     else: continue
 
                 embed = discord.Embed(color = 0x4042CE)
-                embed.add_field(name = f'{Date} {months[Month.strip("0")]} {Year}', value = Message, inline = True)
-                if 'op' in splitMessage[1] or ' v ' in splitMessage[1] or ' vs ' in splitMessage[1] or 'lb' in splitMessage[1] or 'vs' in splitMessage[1] or 'lowball' in splitMessage[1]: opAmount = f'\n\n**Proof Amount**\n{splitMessage[1]}'
-                else: opAmount = ''
+                datePhrase, opAmount = Tools.filter(proof[0]['timestamp'], splitMessage)
+                embed.add_field(name = datePhrase, value = Message, inline = True)
                 embed.add_field(name = 'Image URL', value = f'[Click Here]({imageUrl}){opAmount}')
                 embed.set_thumbnail(url = imageUrl)
                 await ctx.channel.send(embed=embed)
                 [(foundProofs := foundProofs + 1, foundProofsTotal := foundProofsTotal + 1)]
 
                 if foundProofs == 5:
-                    if foundProofsTotal == 20: return None # 10 is the maximum proofs they can see, just change the number to whatever max amount
+                    if foundProofsTotal == 20: return None # 20 is the maximum proofs they can see, just change the number to whatever max amount
                     embed = discord.Embed(title = "Found recent proofs", description = 'To see the next 5 proofs, type `more` in chat (maximum 20).\nIf nothing happened, re-type it', color = 0x0085FF)
                     await ctx.channel.send(embed=embed)
 
@@ -174,14 +106,78 @@ async def proof(ctx, *, args):
                     if msg.content.lower() == 'more': foundProofs -= 5; proofsToFind += 5; continue
                     else: return None
 
-
-            except:
+            except Exception as err:
+                print(err)
                 pass
 
         if foundProofs & 5 != 0 or foundProofs == 0 or foundProofsTotal != proofsToFind:
             offset += 25
             continue
-
         break
 
-bot.run(discord_bot_token)
+@bot.command()
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def often(ctx, *, args):
+    itemName, itemAcronym, amount = Tools.findItem(args, acroToName, nameToAcro, noAcronym)
+
+    if amount != 1:
+        if amount > 1: embed = discord.Embed(title = 'Not specific enough', description = f'`{args}` matched with multiple other limiteds, retry using the limited acronym or **full** name', color = 0xff0000)
+        elif amount == 0: embed = discord.Embed(title = "No found limited", description = f'Unable to find limited to match with `{args}`', color = 0xff0000)
+        await ctx.channel.send(embed=embed)
+        return None
+
+    offset = 0
+    timeStamps = []
+    imageUrl = requests.get(f'https://thumbnails.roblox.com/v1/assets?assetIds={assetIds[str(itemName)]}&returnPolicy=0&size=250x250&format=Png&isCircular=false').json()['data'][0]['imageUrl']
+
+    while len(timeStamps) != 10:
+        content = Tools.toUse(itemAcronym, itemName)
+        r = session.get(f'https://discord.com/api/v9/guilds/415246288779608064/messages/search?channel_id=535250426061258753&content={content}&offset={offset}').json()
+
+        if r['total_results'] == 0 or r['messages'] == []:
+            break
+
+        else:
+            for proof in r['messages']:
+                if len(timeStamps) != 10:
+                    try:
+                        Message = proof[0]['content']
+                        splitMessage = Message.lower().splitlines()
+                        firstLine = firstLineGrab(splitMessage)
+
+                        if itemAcronym != None:
+                            if len(itemAcronym.split()) > 1:
+                                if len(set(itemAcronym.split())&set(firstLine.split())) == len(itemAcronym.split()): pass
+                                elif len(set(itemName.split())&set(firstLine.split())) == len(itemName.split()): pass
+                                else: continue
+                            else:
+                                if len(set(itemAcronym.split())&set(firstLine.split())) == 1: pass
+                                elif len(set(itemName.split())&set(firstLine.split())) == len(itemName.split()): pass
+                                else: continue
+
+
+                        elif itemAcronym == None:
+                            if len(set(itemName.split())&set(firstLine.split())) == len(itemName.split()): pass
+                            else: continue
+
+                        timeStamps.append(proof[0]['timestamp'])
+                    except:
+                        pass
+            offset += 25
+
+    if len(timeStamps) >= 2:
+        filteredDates, sinceRecent, betweenDates = Tools.checkDates(timeStamps)
+        embed = discord.Embed(title = args, description = f'days between the {len(filteredDates)} recent proofs: **{betweenDates}**\ndays since the most recent proof: **{sinceRecent}**', color = 0x4042CE)
+        embed.set_thumbnail(url = imageUrl)
+        await ctx.channel.send(embed=embed)
+    elif len(timeStamps) == 1:
+        filteredDates, sinceRecent, betweenDates = Tools.checkDates(timeStamps)
+        embed = discord.Embed(title = args, description = f'managed to only find **1** proof. unable to continue', color = 0x4042CE)
+        embed.set_thumbnail(url = imageUrl)
+        await ctx.channel.send(embed=embed)
+    else:
+        embed = discord.Embed(title = 'No proofs', description = f'Unable to find *more* proofs for `{args}`', color = 0xFF0000)
+        embed.set_thumbnail(url = imageUrl)
+        await ctx.channel.send(embed=embed)
+
+bot.run(config['discordBotToken'])
