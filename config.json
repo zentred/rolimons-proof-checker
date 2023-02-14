@@ -1,4 +1,5 @@
 {
     "discordAccountToken": "",
-    "discordBotToken": ""
+    "discordBotToken": "",
+    "ignoreChannels": [1234]
 }
