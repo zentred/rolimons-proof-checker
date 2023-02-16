@@ -1,1 +1,2 @@
-config\nt
+config:
+1
