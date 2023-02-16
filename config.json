@@ -1,5 +1,6 @@
 {
     "discordAccountToken": "",
     "discordBotToken": "",
-    "ignoreChannels": [1234]
+    "ignoreChannels": [1234],
+    "maxProofs": 20
 }
