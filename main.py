@@ -131,7 +131,7 @@ async def proof(ctx, *, args):
                 [(foundProofs := foundProofs + 1, foundProofsTotal := foundProofsTotal + 1)]
 
                 if foundProofs == 5:
-                    if foundProofsTotal == 20: return None # 20 is the maximum proofs they can see, just change the number to whatever max amount
+                    if foundProofsTotal == config['maxProofs']: return None # 20 is the maximum proofs they can see, just change the number to whatever max amount
                     embed = discord.Embed(title = "Found recent proofs", description = 'To see the next 5 proofs, type `more` in chat (maximum 20).\nIf nothing happened, re-type it', color = 0x0085FF)
                     await ctx.channel.send(embed=embed)
 
